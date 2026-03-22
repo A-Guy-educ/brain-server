@@ -9,6 +9,7 @@
 ## Overview
 
 OpenClaw is installed on brain-server as an AI agent gateway that:
+
 - Provides a web UI for chatting with AI models
 - Uses MiniMax M2.7-highspeed as the default model
 - Routes through Caddy proxy with Basic Auth
@@ -87,7 +88,12 @@ Start command: `openclaw gateway`
             "name": "MiniMax M2.7 Highspeed",
             "reasoning": true,
             "input": ["text"],
-            "cost": { "input": 0.3, "output": 1.2, "cacheRead": 0.03, "cacheWrite": 0.12 },
+            "cost": {
+              "input": 0.3,
+              "output": 1.2,
+              "cacheRead": 0.03,
+              "cacheWrite": 0.12
+            },
             "contextWindow": 200000,
             "maxTokens": 8192
           }
@@ -172,7 +178,8 @@ WantedBy=multi-user.target
 
 **Cause:** The `auth-profiles.json` with `minimax-coding-plan` key wasn't being picked up.
 
-**Solution:** 
+**Solution:**
+
 - Use `minimax` as provider name in auth-profiles.json
 - Set the actual API key in the `MINIMAX_API_KEY` environment variable
 - OpenClaw reads env vars for auth
@@ -194,29 +201,34 @@ WantedBy=multi-user.target
 ## Commands
 
 ### Start/Restart Gateway
+
 ```bash
 systemctl restart openclaw-gateway
 systemctl status openclaw-gateway
 ```
 
 ### Check Model Status
+
 ```bash
 openclaw models status
 openclaw models list
 ```
 
 ### Test Chat (CLI)
+
 ```bash
 openclaw agent --session-id test123 --message 'Say hello in 3 words' --json
 ```
 
 ### View Logs
+
 ```bash
 tail -f /tmp/openclaw/openclaw-2026-03-22.log
 journalctl -u openclaw-gateway -f
 ```
 
 ### Reload Caddy
+
 ```bash
 caddy reload --config /etc/caddy/Caddyfile
 ```
@@ -225,20 +237,20 @@ caddy reload --config /etc/caddy/Caddyfile
 
 ## Files Summary
 
-| File | Purpose |
-|------|---------|
-| `/root/.openclaw/openclaw.json` | Main OpenClaw config (model, gateway, skills) |
-| `/root/.openclaw/agents/main/agent/auth-profiles.json` | API key references |
-| `/root/.openclaw/agents/main/agent/models.json` | Custom model definitions (if separate) |
-| `/etc/systemd/system/openclaw-gateway.service` | Systemd service with env vars |
-| `/etc/caddy/Caddyfile` | Reverse proxy with Basic Auth |
-| `/opt/openclaw-workspace/` | Workspace for sessions and files |
+| File                                                   | Purpose                                       |
+| ------------------------------------------------------ | --------------------------------------------- |
+| `/root/.openclaw/openclaw.json`                        | Main OpenClaw config (model, gateway, skills) |
+| `/root/.openclaw/agents/main/agent/auth-profiles.json` | API key references                            |
+| `/root/.openclaw/agents/main/agent/models.json`        | Custom model definitions (if separate)        |
+| `/etc/systemd/system/openclaw-gateway.service`         | Systemd service with env vars                 |
+| `/etc/caddy/Caddyfile`                                 | Reverse proxy with Basic Auth                 |
+| `/opt/openclaw-workspace/`                             | Workspace for sessions and files              |
 
 ---
 
 ## TODO
 
-- [ ] Connect chat storage to Supabase
+- [ ] Connect chat storage to Supabase - see [PLAN-openclaw-memory.md](./PLAN-openclaw-memory.md)
 - [ ] Set up Claude Code delegation for complex tasks
 - [ ] Add more models as fallbacks
 - [ ] Configure proper backup strategy
@@ -247,10 +259,10 @@ caddy reload --config /etc/caddy/Caddyfile
 
 ## Credentials
 
-| Service | Username | Password |
-|---------|----------|----------|
-| OpenClaw Web UI | admin | brain123 |
-| Tailscale Funnel | (none) | (via HTTPS) |
+| Service          | Username | Password    |
+| ---------------- | -------- | ----------- |
+| OpenClaw Web UI  | admin    | brain123    |
+| Tailscale Funnel | (none)   | (via HTTPS) |
 
 **Gateway Token:** `test_token_12345`
 
