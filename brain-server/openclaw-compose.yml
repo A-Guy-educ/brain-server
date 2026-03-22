@@ -1,0 +1,59 @@
+# OpenClaw Docker Compose Addition
+# Add this to the existing docker-compose.yml or use standalone
+
+version: '3.8'
+
+services:
+  openclaw:
+    image: node:22-slim
+    container_name: brain-server-openclaw
+    working_dir: /root
+    command: >
+      sh -c "npm install -g openclaw@latest &&
+             mkdir -p /root/.openclaw /opt/openclaw-workspace &&
+             openclaw gateway --port 18789 --verbose"
+    ports:
+      - '18789:18789'
+    volumes:
+      - openclaw-data:/root/.openclaw
+      - openclaw-workspace:/opt/openclaw-workspace
+      - repo:/repo:ro
+    environment:
+      - MINIMAX_API_KEY=${MINIMAX_API_KEY:-not-set}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-not-set}
+    restart: unless-stopped
+    networks:
+      - brain-network
+
+  # Optional: Claude Code MCP server (for persistent sessions)
+  claude-mcp:
+    image: node:22-slim
+    container_name: brain-server-claude-mcp
+    working_dir: /root
+    command: >
+      sh -c "npm install -g claude-code@latest &&
+             claude mcp serve"
+    volumes:
+      - claude-data:/root/.claude
+      - repo:/repo:ro
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-not-set}
+    restart: unless-stopped
+    networks:
+      - brain-network
+
+volumes:
+  openclaw-data:
+  openclaw-workspace:
+  claude-data:
+  repo:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/repo
+
+networks:
+  brain-network:
+    external: true
+    name: brain-server_brain-network

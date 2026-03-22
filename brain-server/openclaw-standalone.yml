@@ -1,0 +1,44 @@
+# Standalone OpenClaw Docker Compose
+# Usage: docker-compose -f openclaw-standalone.yml up -d
+
+version: '3.8'
+
+services:
+  openclaw:
+    image: node:22-slim
+    container_name: openclaw
+    hostname: openclaw
+    working_dir: /root
+    command: >
+      sh -c "npm install -g openclaw@latest &&
+             mkdir -p /root/.openclaw /opt/openclaw-workspace &&
+             openclaw gateway --port 18789 --verbose"
+    ports:
+      - '18789:18789'
+    volumes:
+      - openclaw-data:/root/.openclaw
+      - openclaw-workspace:/opt/openclaw-workspace
+    environment:
+      - MINIMAX_API_KEY=${MINIMAX_API_KEY:-not-set}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-not-set}
+    restart: unless-stopped
+
+  # Claude Code MCP server (optional - for persistent sessions)
+  claude-mcp:
+    image: node:22-slim
+    container_name: claude-mcp
+    hostname: claude-mcp
+    working_dir: /root
+    command: >
+      sh -c "npm install -g claude-code@latest &&
+             claude mcp serve"
+    volumes:
+      - claude-data:/root/.claude
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-not-set}
+    restart: unless-stopped
+
+volumes:
+  openclaw-data:
+  openclaw-workspace:
+  claude-data:
