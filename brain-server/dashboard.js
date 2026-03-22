@@ -10,7 +10,7 @@ const fs = require('fs')
 const path = require('path')
 const { execSync, exec } = require('child_process')
 
-const PORT = process.env.DASHBOARD_PORT || 4102
+const PORT = process.env.DASHBOARD_PORT || 4103
 
 const SESSIONS_DIR = '/root/.openclaw/agents/main/sessions'
 const SESSIONS_MARKER = '/root/.openclaw/agents/main/.synced_sessions'
