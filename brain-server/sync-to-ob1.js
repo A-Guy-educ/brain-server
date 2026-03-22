@@ -84,17 +84,21 @@ function getOpenRouterEmbedding(text) {
   })
 }
 
-function insertThought(content, metadata) {
+function insertThought(content, metadata, embedding = null) {
   if (!SUPABASE_SERVICE_KEY) {
     error('Supabase service key not configured')
     return Promise.resolve({ success: false, error: 'No service key' })
   }
 
   return new Promise((resolve, reject) => {
-    const body = JSON.stringify({
+    const insertObj = {
       content: content.substring(0, 10000),
       metadata: metadata,
-    })
+    }
+    if (embedding) {
+      insertObj.embedding = embedding
+    }
+    const body = JSON.stringify(insertObj)
 
     const url = new URL(SUPABASE_URL)
     const req = https.request(
@@ -269,7 +273,7 @@ async function syncSession(sessionFile) {
     insertData.embedding = embedding
   }
 
-  const result = await insertThought(insertData.content, insertData.metadata)
+  const result = await insertThought(insertData.content, insertData.metadata, embedding)
 
   if (result.success) {
     log(`Successfully synced session ${sessionId}${result.id ? ` (id: ${result.id})` : ''}`)
