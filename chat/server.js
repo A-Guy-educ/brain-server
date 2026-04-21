@@ -102,7 +102,54 @@ function saveChatState(chatId, state) {
   fs.writeFileSync(p, JSON.stringify(state, null, 2))
 }
 
-async function runTurn({ chatId, message, onEvent }) {
+/**
+ * Convert client attachments (with optional data URL base64 payloads) to the
+ * content blocks Claude expects:
+ *   - image/*  → { type: "image", source: { type: "base64", media_type, data } }
+ *   - everything else → { type: "text", text: "[File: name]\n<decoded body>" }
+ *
+ * Large non-image files are truncated to keep the request under API limits.
+ */
+function buildContentBlocks(message, attachments) {
+  const blocks = [{ type: "text", text: message }]
+  if (!Array.isArray(attachments)) return blocks
+
+  for (const att of attachments) {
+    if (!att || typeof att.data !== "string") continue
+    const mimeType = att.mimeType || "application/octet-stream"
+    const name = att.name || "attachment"
+
+    // Strip data URL prefix if present.
+    let base64 = att.data
+    const match = /^data:([^;]+);base64,(.+)$/.exec(att.data)
+    if (match) base64 = match[2]
+
+    if (mimeType.startsWith("image/")) {
+      blocks.push({
+        type: "image",
+        source: { type: "base64", media_type: mimeType, data: base64 },
+      })
+      continue
+    }
+
+    // Non-image: inline as text. Decode if base64, otherwise use raw data.
+    let text
+    try {
+      text = match
+        ? Buffer.from(base64, "base64").toString("utf8")
+        : att.data
+    } catch {
+      text = "[binary — could not decode]"
+    }
+    const MAX = 20_000
+    if (text.length > MAX) text = `${text.slice(0, MAX)}\n…[truncated]`
+    blocks.push({ type: "text", text: `[File: ${name} (${mimeType})]\n${text}` })
+  }
+
+  return blocks
+}
+
+async function runTurn({ chatId, message, attachments, onEvent }) {
   let state = loadChatState(chatId)
   if (!state) {
     const repo = DEFAULT_REPO
@@ -111,8 +158,26 @@ async function runTurn({ chatId, message, onEvent }) {
     saveChatState(chatId, state)
   }
 
+  // If any attachments were sent, use the multimodal iterable prompt form so
+  // Claude sees images as images (not inlined base64 text).
+  const hasAttachments = Array.isArray(attachments) && attachments.length > 0
+  let promptInput
+  if (hasAttachments) {
+    const content = buildContentBlocks(message, attachments)
+    promptInput = (async function* () {
+      yield {
+        type: "user",
+        message: { role: "user", content },
+        parent_tool_use_id: null,
+        session_id: state.sessionId || "",
+      }
+    })()
+  } else {
+    promptInput = message
+  }
+
   const q = query({
-    prompt: message,
+    prompt: promptInput,
     options: {
       model: MODEL,
       cwd: state.cwd,
@@ -126,6 +191,7 @@ async function runTurn({ chatId, message, onEvent }) {
   let finalText = ""
   let newSessionId = state.sessionId
 
+  try {
   for await (const msg of q) {
     if (msg.type === "system" && msg.subtype === "init" && msg.session_id) {
       newSessionId = msg.session_id
@@ -147,6 +213,14 @@ async function runTurn({ chatId, message, onEvent }) {
         onEvent({ type: "error", error: `agent failed: ${msg.subtype}` })
       }
     }
+  }
+  } catch (err) {
+    // SDK can throw on upstream API errors (400 for invalid images, etc.).
+    // Report to the caller and keep the server alive — an unhandled rejection
+    // here would otherwise tank the whole process.
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error(`[runTurn] query iteration failed for chat ${chatId}: ${msg}`)
+    onEvent({ type: "error", error: msg })
   }
 
   if (newSessionId && newSessionId !== state.sessionId) {
@@ -205,6 +279,7 @@ const server = http.createServer(async (req, res) => {
       return
     }
     const message = parsed?.message
+    const attachments = Array.isArray(parsed?.attachments) ? parsed.attachments : undefined
     if (!message || typeof message !== "string") {
       res.writeHead(400, { "Content-Type": "application/json" })
       res.end(JSON.stringify({ error: "message required" }))
@@ -223,6 +298,7 @@ const server = http.createServer(async (req, res) => {
       await enqueue(chatId, () => runTurn({
         chatId,
         message,
+        attachments,
         onEvent: (ev) => sendSseEvent(res, ev),
       }))
     } catch (e) {
