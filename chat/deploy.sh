@@ -107,6 +107,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=$REMOTE_DIR
+Environment=HOME=/root
 EnvironmentFile=$REMOTE_DIR/.env
 ExecStart=/usr/bin/env node server.js
 Restart=always
