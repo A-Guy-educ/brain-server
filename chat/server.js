@@ -60,6 +60,7 @@ function ensureBareRepo(repo) {
     console.log(`[repo] cloning bare: ${repo}`)
     run("gh", ["repo", "clone", repo, barePath, "--", "--bare"])
   } else {
+    console.log(`[repo] fetching: ${repo}`)
     try {
       run("git", ["--git-dir", barePath, "fetch", "--all", "--prune"])
     } catch (e) {
