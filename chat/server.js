@@ -25,7 +25,6 @@ import { query } from "@anthropic-ai/claude-agent-sdk"
 const PORT = parseInt(process.env.PORT || "4096", 10)
 const API_KEY = process.env.BRAIN_API_KEY
 const DATA_DIR = process.env.BRAIN_DATA_DIR || path.join(process.env.HOME || ".", "tmp/brain-test")
-const DEFAULT_REPO = process.env.BRAIN_DEFAULT_REPO || "A-Guy-educ/A-Guy"
 const MODEL = process.env.BRAIN_MODEL || "claude-sonnet-4-5"
 
 if (!API_KEY) {
@@ -36,6 +35,7 @@ if (!API_KEY) {
 fs.mkdirSync(path.join(DATA_DIR, "chats"), { recursive: true })
 fs.mkdirSync(path.join(DATA_DIR, "repos"), { recursive: true })
 fs.mkdirSync(path.join(DATA_DIR, "workspaces"), { recursive: true })
+fs.mkdirSync(path.join(DATA_DIR, "scratch"), { recursive: true })
 
 const chatQueues = new Map()
 
@@ -149,11 +149,11 @@ function buildContentBlocks(message, attachments) {
   return blocks
 }
 
-async function runTurn({ chatId, message, attachments, onEvent }) {
+async function runTurn({ chatId, message, attachments, repo: requestedRepo, onEvent }) {
   let state = loadChatState(chatId)
   if (!state) {
-    const repo = DEFAULT_REPO
-    const cwd = ensureWorktree(chatId, repo)
+    const repo = requestedRepo || null
+    const cwd = repo ? ensureWorktree(chatId, repo) : path.join(DATA_DIR, "scratch")
     state = { chatId, repo, cwd, sessionId: null, createdAt: new Date().toISOString() }
     saveChatState(chatId, state)
   }
@@ -181,7 +181,7 @@ async function runTurn({ chatId, message, attachments, onEvent }) {
     options: {
       model: MODEL,
       cwd: state.cwd,
-      allowedTools: ["Read", "Grep", "Glob", "Bash"],
+      allowedTools: state.repo ? ["Read", "Grep", "Glob", "Bash"] : [],
       permissionMode: "default",
       settingSources: [],
       ...(state.sessionId ? { resume: state.sessionId } : {}),
@@ -280,9 +280,15 @@ const server = http.createServer(async (req, res) => {
     }
     const message = parsed?.message
     const attachments = Array.isArray(parsed?.attachments) ? parsed.attachments : undefined
+    const repo = typeof parsed?.repo === "string" && parsed.repo.trim() ? parsed.repo.trim() : undefined
     if (!message || typeof message !== "string") {
       res.writeHead(400, { "Content-Type": "application/json" })
       res.end(JSON.stringify({ error: "message required" }))
+      return
+    }
+    if (repo && !/^[\w.-]+\/[\w.-]+$/.test(repo)) {
+      res.writeHead(400, { "Content-Type": "application/json" })
+      res.end(JSON.stringify({ error: "repo must be owner/name" }))
       return
     }
 
@@ -299,6 +305,7 @@ const server = http.createServer(async (req, res) => {
         chatId,
         message,
         attachments,
+        repo,
         onEvent: (ev) => sendSseEvent(res, ev),
       }))
     } catch (e) {
@@ -328,6 +335,5 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, () => {
   console.log(`brain-chat listening on ${PORT}`)
   console.log(`data dir: ${DATA_DIR}`)
-  console.log(`default repo: ${DEFAULT_REPO}`)
   console.log(`model: ${MODEL}`)
 })
