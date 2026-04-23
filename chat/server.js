@@ -244,8 +244,10 @@ async function runTurn({ chatId, message, attachments, repo: requestedRepo, onEv
       model: MODEL,
       cwd: state.cwd,
       systemPrompt: SYSTEM_PROMPT,
-      allowedTools: state.repo ? ["Read", "Grep", "Glob", "Bash"] : [],
-      permissionMode: "default",
+      allowedTools: state.repo
+        ? ["Read", "Grep", "Glob", "Bash", "WebFetch", "WebSearch", "TodoWrite", "Task"]
+        : ["WebFetch", "WebSearch", "TodoWrite", "Task"],
+      permissionMode: "bypassPermissions",
       settingSources: [],
       ...(state.sessionId ? { resume: state.sessionId } : {}),
     },
