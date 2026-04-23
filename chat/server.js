@@ -238,16 +238,24 @@ async function runTurn({ chatId, message, attachments, repo: requestedRepo, onEv
     promptInput = message
   }
 
+  const allowedTools = state.repo
+    ? ["Read", "Grep", "Glob", "Bash", "WebFetch", "WebSearch", "TodoWrite", "Task"]
+    : ["WebFetch", "WebSearch", "TodoWrite", "Task"]
+
   const q = query({
     prompt: promptInput,
     options: {
       model: MODEL,
       cwd: state.cwd,
       systemPrompt: SYSTEM_PROMPT,
-      allowedTools: state.repo
-        ? ["Read", "Grep", "Glob", "Bash", "WebFetch", "WebSearch", "TodoWrite", "Task"]
-        : ["WebFetch", "WebSearch", "TodoWrite", "Task"],
-      permissionMode: "bypassPermissions",
+      allowedTools,
+      permissionMode: "default",
+      canUseTool: async (toolName) => {
+        if (allowedTools.includes(toolName)) {
+          return { behavior: "allow", updatedInput: {} }
+        }
+        return { behavior: "deny", message: `tool ${toolName} not in allowlist` }
+      },
       settingSources: [],
       ...(state.sessionId ? { resume: state.sessionId } : {}),
     },
