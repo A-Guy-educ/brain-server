@@ -78,6 +78,9 @@ remote "rm -rf $REMOTE_DIR/node_modules/@anthropic-ai/claude-agent-sdk-linux-x64
 echo "==> installing playwright chromium + deps"
 remote "cd $REMOTE_DIR && npx --yes playwright install --with-deps chromium"
 
+echo "==> linking browse-url into /usr/local/bin"
+remote "chmod +x $REMOTE_DIR/bin/browse-url.js && ln -sf $REMOTE_DIR/bin/browse-url.js /usr/local/bin/browse-url"
+
 echo "==> ensuring .env"
 remote "bash -s" <<EOF
 set -e
