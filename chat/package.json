@@ -5,14 +5,16 @@
   "type": "module",
   "description": "Brain chat server — multi-turn agent chat with per-chat sessions and worktree-isolated workspaces",
   "bin": {
-    "brain-chat-cli": "./cli.js"
+    "brain-chat-cli": "./cli.js",
+    "browse-url": "./bin/browse-url.js"
   },
   "scripts": {
     "start": "node server.js",
     "cli": "node cli.js"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.0"
+    "@anthropic-ai/claude-agent-sdk": "^0.2.0",
+    "playwright": "^1.48.0"
   },
   "engines": {
     "node": ">=22"

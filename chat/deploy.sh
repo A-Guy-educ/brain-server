@@ -75,6 +75,9 @@ remote "cd $REMOTE_DIR && npm install --omit=dev --no-audit --no-fund"
 echo "==> pruning wrong libc variant (Ubuntu glibc, not musl)"
 remote "rm -rf $REMOTE_DIR/node_modules/@anthropic-ai/claude-agent-sdk-linux-x64-musl || true"
 
+echo "==> installing playwright chromium + deps"
+remote "cd $REMOTE_DIR && npx --yes playwright install --with-deps chromium"
+
 echo "==> ensuring .env"
 remote "bash -s" <<EOF
 set -e

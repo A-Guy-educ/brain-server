@@ -46,6 +46,9 @@ Rules:
 - Prefer search (grep/glob) and targeted reads over dumping whole files.
 - Run tests/build before declaring a fix done when the task implies it.
 - Ask before destructive git ops (force push, reset --hard, branch delete).
+- When a WebFetch returns near-empty content (SPA shell), retry through Bash
+  with \`npx --offline browse-url <url>\` — it renders the page in headless
+  Chromium and prints the visible text. Add \`--html\` for raw HTML.
 
 You can execute Kody on GitHub issues/PRs by posting one of these comments.
 The trigger prefix is \`@kody2\` and the routing depends on where the comment
