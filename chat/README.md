@@ -45,11 +45,26 @@ Request:
 {"message":"What's in package.json?"}
 ```
 Response: `text/event-stream`, one `data: {...}` per line. Event types:
-- `{"type":"chat","chatId":"..."}` — first event, confirms the active chat.
-- `{"type":"text","text":"..."}` — assistant text (may be partial).
-- `{"type":"tool_use","name":"Read","input":{...}}` — agent called a tool.
-- `{"type":"done","text":"<final>"}` — turn finished.
-- `{"type":"error","error":"..."}` — something failed.
+- `{"type":"chat","chatId":"..."}` — first event, confirms the active chat
+  (unsequenced).
+- `{"type":"text","text":"...","seq":N}` — assistant text (may be partial).
+- `{"type":"tool_use","name":"Read","input":{...},"seq":N}` — agent tool call.
+- `{"type":"done","text":"<final>","seq":N}` — turn finished.
+- `{"type":"error","error":"...","seq":N}` — something failed.
+
+The turn runs to completion **server-side**, independent of this connection.
+Every event after the handshake carries a per-chat monotonic `seq`. If the
+connection drops mid-turn (e.g. a proxy with a request-duration cap), reconnect
+with the resume endpoint below using the highest `seq` seen.
+
+### `GET /chats/:chatId/stream?since=<seq>`
+Reconnect to an in-flight or finished turn. Replays persisted events with
+`seq > since`, then live-tails a still-running turn until its terminal
+`done`/`error`, then closes. Same event shapes as above (handshake first).
+If the server restarted mid-turn (no terminal in the log, nothing live) it
+emits a single `error` ("stream interrupted … resend your message") and closes
+instead of hanging. Per-turn events are persisted to
+`$DATA_DIR/chats/<chatId>/events.jsonl`.
 
 ### `POST /chats/:chatId/reset`
 Wipes the chat's state.json and worktree. Next message starts a fresh session.

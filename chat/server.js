@@ -21,6 +21,12 @@ import path from "node:path"
 import { spawnSync } from "node:child_process"
 import { randomUUID } from "node:crypto"
 import { query } from "@anthropic-ai/claude-agent-sdk"
+import {
+  beginTurn,
+  endTurnIfUnterminated,
+  subscribe,
+  getLastSeq,
+} from "./turn-log.js"
 
 const PORT = parseInt(process.env.PORT || "4096", 10)
 const API_KEY = process.env.BRAIN_API_KEY
@@ -322,6 +328,58 @@ function sendSseEvent(res, event) {
   res.write(`data: ${JSON.stringify(event)}\n\n`)
 }
 
+/**
+ * Start a turn that runs to completion server-side, independent of any HTTP
+ * connection. Returns immediately; events flow into the turn log (persisted +
+ * fanned out to subscribers). Serialized per chat via the existing queue.
+ */
+function startTurnDetached(chatId, { message, attachments, repo }) {
+  const emit = beginTurn(DATA_DIR, chatId)
+  enqueue(chatId, () =>
+    runTurn({ chatId, message, attachments, repo, onEvent: emit })
+      .catch((e) => {
+        const msg = e instanceof Error ? e.message : String(e)
+        endTurnIfUnterminated(DATA_DIR, chatId, msg)
+      })
+      .finally(() => {
+        // runTurn normally emits its own done/error; this only fires if it
+        // returned without a terminal event, so reconnecting clients never
+        // hang waiting for an end that won't come.
+        endTurnIfUnterminated(DATA_DIR, chatId, "turn ended without a result")
+      }),
+  )
+}
+
+/**
+ * Stream a chat's events to an SSE response starting after `since`, replaying
+ * the persisted gap then live-tailing until the turn's terminal event. The
+ * turn keeps running even if this response disconnects.
+ */
+function streamToRes(res, chatId, since) {
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no",
+  })
+  // Unsequenced handshake — confirms the chat id, ignored by cursor tracking.
+  sendSseEvent(res, { type: "chat", chatId })
+
+  let maxSent = since
+  const onRecord = (rec) => {
+    if (!rec || rec.seq <= maxSent) return // dedupe backlog↔live boundary
+    maxSent = rec.seq
+    if (res.writableEnded) return
+    sendSseEvent(res, { ...rec.event, seq: rec.seq })
+  }
+  const onClose = () => {
+    if (!res.writableEnded) res.end()
+  }
+
+  const unsubscribe = subscribe(DATA_DIR, chatId, since, onRecord, onClose)
+  res.on("close", unsubscribe)
+}
+
 async function readBody(req) {
   const chunks = []
   for await (const chunk of req) chunks.push(chunk)
@@ -369,27 +427,24 @@ const server = http.createServer(async (req, res) => {
       return
     }
 
-    res.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
-    })
-    sendSseEvent(res, { type: "chat", chatId })
+    // Cursor floor for this turn = the chat's last seq before it starts.
+    // The turn runs detached; this response just tails it from that floor and
+    // can be reconnected via GET /chats/:id/stream?since=<seq>.
+    const sinceFloor = getLastSeq(DATA_DIR, chatId)
+    startTurnDetached(chatId, { message, attachments, repo })
+    streamToRes(res, chatId, sinceFloor)
+    return
+  }
 
-    try {
-      await enqueue(chatId, () => runTurn({
-        chatId,
-        message,
-        attachments,
-        repo,
-        onEvent: (ev) => sendSseEvent(res, ev),
-      }))
-    } catch (e) {
-      sendSseEvent(res, { type: "error", error: e.message })
-    } finally {
-      res.end()
-    }
+  // Reconnect/resume: replay events after ?since then live-tail the running
+  // turn until it ends. This is what makes a turn survive the dashboard's
+  // ~300s Vercel ceiling — the browser reconnects here with its last seq.
+  const streamMatch = url.pathname.match(/^\/chats\/([^/]+)\/stream$/)
+  if (streamMatch && req.method === "GET") {
+    const chatId = streamMatch[1]
+    const sinceRaw = url.searchParams.get("since")
+    const since = Number.isFinite(Number(sinceRaw)) ? Number(sinceRaw) : 0
+    streamToRes(res, chatId, since)
     return
   }
 
